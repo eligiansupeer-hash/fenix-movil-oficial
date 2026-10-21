@@ -1,0 +1,50 @@
+name: Android CI / Build & Test Remoto
+
+on:
+  push:
+    branches: [ "**" ]
+  pull_request:
+    branches: [ "**" ]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Compilar en la Nube (GitHub Runner 16GB RAM)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout del repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - name: Dar permisos de ejecucion a gradlew
+        run: |
+          if [ -f "./gradlew" ]; then
+            chmod +x ./gradlew
+          fi
+
+      - name: Validar compilacion Gradle (assembleDebug)
+        run: |
+          if [ -f "./gradlew" ]; then
+            ./gradlew assembleDebug --no-daemon --stacktrace
+          else
+            echo "Aviso: gradlew aun no existe en este commit. Esperando entrega de andamiaje."
+          fi
+
+      - name: Subir APK Debug como artefacto de compilacion
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fenix-movil-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: ignore

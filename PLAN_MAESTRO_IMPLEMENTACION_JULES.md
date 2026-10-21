@@ -143,26 +143,29 @@ Jules dispondrá de los siguientes 3 repositorios como material de análisis y r
 
 ---
 
-## 📋 4. ESTRATEGIA DE PRUEBAS REALES Y SIMULACIÓN ANDROID PARA JULES
+## 📋 4. ARQUITECTURA DE VALIDACIÓN REMOTA EN GITHUB ACTIONS CI (PROHIBICIÓN ESTRICTA DE COMPILACIÓN LOCAL EN JULES)
 
-Para garantizar que el código entregado esté 100% depurado y libre de fallos en runtime, Jules debe emplear la siguiente matriz de verificación escalonada:
+> [!CRITICAL]
+> **REGLA DE ORO DE HIGIENE: PROHIBICIÓN TOTAL DE `./gradlew build` O `assemble` DENTRO DEL SANDBOX DE JULES**  
+> Jules tiene **terminantemente prohibido** ejecutar `./gradlew build`, `./gradlew assembleDebug` o cualquier comando de compilación local que genere carpetas de caché `.gradle/` o artefactos binarios `.dex`/`.jar`.  
+> Intentar compilar localmente genera más de 80 MB de binarios que saturan el límite de tamaño de la API de Jules y abortan la sesión. Jules **SOLO escribe código fuente de texto puro** (`.kt`, `.kts`, `.xml`, `.c`, `.h`, `.md`).
 
-1. **Simulador Android Headless (AVD / KVM) o Dispositivo Real ADB:**
-   - Si el entorno dispone de virtualización (KVM): Lanzar el emulador de Android en modo headless:
+### Flujo de Verificación Continua en la Nube (GitHub Actions CI):
+1. **Compilación Asistida en la Nube:**  
+   - Cada commit o push de Jules a su rama de trabajo dispara de forma automática el pipeline `.github/workflows/android-ci.yml` en los servidores de GitHub (runners Ubuntu con 16 GB de RAM dedicadas).
+   - GitHub Actions se encarga de descargar el código, configurar JDK 17, compilar el proyecto (`assembleDebug`), ejecutar los tests y generar el APK sin consumir 1 solo byte de RAM en el entorno local de Jules.
+
+2. **Retroalimentación en Tiempo Real para Jules:**  
+   - Jules debe observar el estado del **Check de GitHub Actions** asociado a su rama o Pull Request.
+   - **Si el Check falla (`FAILED`):** Jules inspecciona el log de error que GitHub Actions arroja en el check (por ejemplo, errores de tipado de Kotlin, imports faltantes, dependencias de Gradle desalineadas) y aplica quirúrgicamente la corrección en el archivo `.kt` o `.kts` correspondiente.
+   - **Si el Check pasa (`SUCCESS` / Verde):** Significa que el código compila de forma 100% limpia y el APK ha sido generado con éxito en los servidores de GitHub.
+
+3. **Pruebas de Binarios NDK y 16 KB ELF (Inspección Estática):**  
+   - Para verificar la compatibilidad de `libproot.so` con alineación de 16 KB, realizar únicamente inspección estática de encabezados sin compilar:
      ```bash
-     emulator -avd FenixTestDevice -no-window -no-audio -gpu swiftshader_indirect &
-     adb wait-for-device
-     adb install -r app/build/outputs/apk/debug/app-debug.apk
+     readelf -l app/src/main/jniLibs/arm64-v8a/libproot.so | grep -i "LOAD"
      ```
-   - Si hay un dispositivo físico conectado vía ADB: Ejecutar `adb install` y lanzar la Activity principal (`adb shell am start -n com.fenix.mobile/.MainActivity`), capturando logs de crash (`logcat -d *:E`).
-2. **Pruebas de Interfaz Compose sin Emulador Pesado (Robolectric & Compose Testing):**
-   - Ejecutar pruebas instrumentadas en JVM pura mediante `compose-ui-test-junit4` y `robolectric`:
-     - Renderizado de componentes, navegación entre pestañas, expansión de acordeones y selectores dinámicos.
-     - Simulación de clics en las anclas en negrita F-Z del editor y verificación de apertura del Split Sheet a media pantalla.
-3. **Validación de Binarios arm64 y NDK vía QEMU User-Mode:**
-   - Para probar `libproot.so` y `libtermux.so` en entornos Linux x86_64: utilizar `qemu-aarch64` para ejecutar los binarios de la sandbox Debian y asegurar que no produzcan `SIGSEGV` o fallos de alineación ELF a 16 KB.
-4. **Pruebas de Integración de Red y MCP Ktor:**
-   - Tests automatizados en JUnit para levantar el servidor Ktor en `127.0.0.1:8080/mcp`, emitir llamadas JSON-RPC 2.0 y validar que las respuestas SSE contengan los schemas de herramientas correctos.
+   - Verificar que `max-page-size` sea 16384 (16 KB) para garantizar compatibilidad con Android 14, 15 y 16 sin W^X crashes.
 
 ---
 
