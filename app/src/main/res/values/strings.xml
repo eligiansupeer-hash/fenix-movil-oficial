@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">Fenix Móvil</string>
+    <string name="accessibility_service_description">Puente de accesibilidad soberano de Fénix para inspección y ejecución de acciones táctiles mediante MCP.</string>
+</resources>
